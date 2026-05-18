@@ -8,10 +8,10 @@ Stack: PyQt6 + PyMuPDF + pypdf + ReportLab + WeasyPrint + LibreOffice. Windows o
 - [x] Phase 2: page ops — merge, split, reorder (drag), delete
 - [x] Phase 3: converters — images, office (soffice), html/md (weasyprint), text/csv (reportlab)
 - [x] Phase 4: forms fill + image signature stamp
-- [ ] Phase 5: edit overlays UI — wire `pdf_edit.py` (redact, text box, image replace) to viewer rect-drag tool
+- [x] Phase 5: edit overlays UI — rect-drag in viewer; modes: Pan, Redact, Text, Image, Highlight
 - [ ] Phase 6: cryptographic signing via pyhanko (cert + key config UI)
-- [ ] Phase 7: annotations — highlight, freehand draw, sticky note
-- [ ] Phase 8: package as `.exe` with PyInstaller, bundle icon
+- [~] Phase 7: annotations — highlight done; freehand draw + sticky note pending
+- [x] Phase 8: PyInstaller build script (`build.ps1`); icon + signed exe pending
 - [ ] Phase 9: installer (Inno Setup) — check LibreOffice + GTK deps, prompt install
 
 ## Open issues / decisions
@@ -33,4 +33,21 @@ Brief Claude: "Resume pdf_app. Read README.md + TODO.md. Continue from next unch
 
 ## Next concrete task
 
-Phase 5 step 1: add rectangle-drag tool in `ui/pdf_viewer.py`. On mouse release, emit signal with (page_index, rect_in_pdf_coords). MainWindow routes to chosen op (redact / text / replace image). Convert screen rect -> PDF coords by dividing by `self.zoom`.
+Phase 6: cryptographic signing.
+- Add `core/signing.py::sign_pkcs7(src, out, pfx_path, password, reason, location)`
+- Use `pyhanko.sign.signers.SimpleSigner.load_pkcs12()` + `pyhanko.sign.PdfSigner`
+- UI: add "Digital sign..." action in FormPanel — file picker for .pfx, password prompt
+- Optional: visible sig combining `stamp_image` + crypto sig (pyhanko signature field)
+
+Phase 7 remainder:
+- Freehand draw: capture mouse path in viewer (list of QPointF), emit on release, write via `page.add_ink_annot([points])`
+- Sticky note: click position -> `page.add_text_annot(point, text, icon="Note")`
+
+Phase 8 polish:
+- Add `icon.ico` to build.ps1 (`--icon icon.ico`)
+- Build, smoke-test `dist\pdf_app.exe`
+- Sign exe (`signtool`) if cert available
+
+Phase 9:
+- Write `installer.iss` (Inno Setup)
+- Pre-install check: LibreOffice present? GTK present? Offer download links

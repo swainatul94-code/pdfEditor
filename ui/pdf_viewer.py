@@ -1,26 +1,52 @@
+from enum import Enum
 from pathlib import Path
 import fitz
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
-from PyQt6.QtGui import QPixmap, QImage, QWheelEvent
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem,
+)
+from PyQt6.QtGui import QPixmap, QImage, QWheelEvent, QPen, QColor, QMouseEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF
+
+
+class Mode(str, Enum):
+    PAN = "pan"
+    REDACT = "redact"
+    TEXT = "text"
+    IMAGE = "image"
+    HIGHLIGHT = "highlight"
 
 
 class PdfViewer(QGraphicsView):
+    # (page_index, x0, y0, x1, y1) in PDF points
+    edit_rect = pyqtSignal(int, float, float, float, float)
+
     def __init__(self):
         super().__init__()
         self.scene_ = QGraphicsScene(self)
         self.setScene(self.scene_)
-        self.setRenderHints(self.renderHints())
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.doc: fitz.Document | None = None
         self.zoom = 1.5
         self.current_page = 0
+        self.mode: Mode = Mode.PAN
+        self._drag_start: QPointF | None = None
+        self._rubber: QGraphicsRectItem | None = None
+
+    def set_mode(self, mode: Mode):
+        self.mode = mode
+        if mode == Mode.PAN:
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            self.viewport().unsetCursor()
+        else:
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+            self.viewport().setCursor(Qt.CursorShape.CrossCursor)
 
     def load(self, path: Path):
         if self.doc:
             self.doc.close()
         self.doc = fitz.open(path)
-        self.show_page(0)
+        page = min(self.current_page, self.doc.page_count - 1)
+        self.show_page(max(0, page))
 
     def show_page(self, index: int):
         if not self.doc or index < 0 or index >= self.doc.page_count:
@@ -41,3 +67,46 @@ class PdfViewer(QGraphicsView):
             self.show_page(self.current_page)
         else:
             super().wheelEvent(event)
+
+    # Rect-drag editing
+    def mousePressEvent(self, event: QMouseEvent):
+        if self.mode != Mode.PAN and event.button() == Qt.MouseButton.LeftButton and self.doc:
+            self._drag_start = self.mapToScene(event.pos())
+            self._rubber = QGraphicsRectItem()
+            pen = QPen(QColor(220, 30, 30))
+            pen.setWidth(2)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            self._rubber.setPen(pen)
+            self.scene_.addItem(self._rubber)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._rubber and self._drag_start is not None:
+            cur = self.mapToScene(event.pos())
+            self._rubber.setRect(QRectF(self._drag_start, cur).normalized())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if self._rubber and self._drag_start is not None:
+            cur = self.mapToScene(event.pos())
+            rect = QRectF(self._drag_start, cur).normalized()
+            self.scene_.removeItem(self._rubber)
+            self._rubber = None
+            self._drag_start = None
+            if rect.width() < 3 or rect.height() < 3:
+                event.accept()
+                return
+            z = self.zoom
+            self.edit_rect.emit(
+                self.current_page,
+                rect.x() / z, rect.y() / z,
+                (rect.x() + rect.width()) / z,
+                (rect.y() + rect.height()) / z,
+            )
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)

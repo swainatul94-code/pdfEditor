@@ -1,19 +1,20 @@
+import os
+import shutil
+import tempfile
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QFileDialog, QMessageBox, QTabWidget, QWidget, QVBoxLayout,
-    QHBoxLayout, QPushButton, QListWidget, QLabel, QSplitter, QInputDialog,
+    QSplitter, QInputDialog, QToolBar,
 )
+from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtCore import Qt
 
-from pdf_app.ui.pdf_viewer import PdfViewer
+from pdf_app.ui.pdf_viewer import PdfViewer, Mode
 from pdf_app.ui.page_panel import PagePanel
 from pdf_app.ui.form_panel import FormPanel
-from pdf_app.core import pdf_ops
+from pdf_app.core import pdf_ops, pdf_edit
 from pdf_app.converters import (
-    images_to_pdf,
-    office_to_pdf,
-    html_md_to_pdf,
-    text_csv_to_pdf,
+    images_to_pdf, office_to_pdf, html_md_to_pdf, text_csv_to_pdf,
 )
 
 
@@ -22,11 +23,34 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("pdf_app")
         self.resize(1280, 800)
-        self.current_pdf: Path | None = None
+        self.original_pdf: Path | None = None
+        self.work_pdf: Path | None = None
+        self._tmp_dir = Path(tempfile.gettempdir()) / "pdf_app"
+        self._tmp_dir.mkdir(exist_ok=True)
 
         self._build_menu()
+        self._build_toolbar()
         self._build_ui()
 
+    # Working file lifecycle
+    def _make_work_copy(self, src: Path) -> Path:
+        dest = self._tmp_dir / f"work_{os.getpid()}_{src.name}"
+        shutil.copy2(src, dest)
+        return dest
+
+    def _cleanup_work(self):
+        if self.work_pdf and self.work_pdf.exists():
+            try:
+                self.work_pdf.unlink()
+            except OSError:
+                pass
+        self.work_pdf = None
+
+    def closeEvent(self, event):
+        self._cleanup_work()
+        super().closeEvent(event)
+
+    # UI build
     def _build_menu(self):
         mb = self.menuBar()
         file_menu = mb.addMenu("&File")
@@ -45,17 +69,39 @@ class MainWindow(QMainWindow):
         pages_menu.addAction("Merge PDFs...", self.merge_pdfs)
         pages_menu.addAction("Split current PDF...", self.split_pdf)
 
+    def _build_toolbar(self):
+        tb = QToolBar("Edit", self)
+        tb.setMovable(False)
+        self.addToolBar(tb)
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        self.mode_actions: dict[Mode, QAction] = {}
+        for label, mode in [
+            ("Pan", Mode.PAN),
+            ("Redact", Mode.REDACT),
+            ("Text", Mode.TEXT),
+            ("Image", Mode.IMAGE),
+            ("Highlight", Mode.HIGHLIGHT),
+        ]:
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.triggered.connect(lambda _checked, m=mode: self._set_mode(m))
+            group.addAction(act)
+            tb.addAction(act)
+            self.mode_actions[mode] = act
+        self.mode_actions[Mode.PAN].setChecked(True)
+
     def _build_ui(self):
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
-        # View/Edit tab
         view_tab = QWidget()
         split = QSplitter(Qt.Orientation.Horizontal, view_tab)
         self.page_panel = PagePanel()
         self.viewer = PdfViewer()
         self.page_panel.page_selected.connect(self.viewer.show_page)
         self.page_panel.pages_changed.connect(self._on_pages_changed)
+        self.viewer.edit_rect.connect(self._on_edit_rect)
         split.addWidget(self.page_panel)
         split.addWidget(self.viewer)
         split.setSizes([220, 1060])
@@ -63,37 +109,87 @@ class MainWindow(QMainWindow):
         lay.addWidget(split)
         self.tabs.addTab(view_tab, "View / Edit")
 
-        # Forms tab
         self.form_panel = FormPanel()
         self.tabs.addTab(self.form_panel, "Forms / Sign")
+
+    def _set_mode(self, mode: Mode):
+        self.viewer.set_mode(mode)
 
     # File ops
     def open_pdf(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF (*.pdf)")
         if not path:
             return
-        self.current_pdf = Path(path)
-        self.viewer.load(self.current_pdf)
-        self.page_panel.load(self.current_pdf)
-        self.form_panel.load(self.current_pdf)
-        self.setWindowTitle(f"pdf_app — {self.current_pdf.name}")
+        self._cleanup_work()
+        self.original_pdf = Path(path)
+        self.work_pdf = self._make_work_copy(self.original_pdf)
+        self.viewer.load(self.work_pdf)
+        self.page_panel.load(self.work_pdf)
+        self.form_panel.load(self.work_pdf)
+        self.setWindowTitle(f"pdf_app — {self.original_pdf.name}")
 
     def save_as(self):
-        if not self.current_pdf:
+        if not self.work_pdf:
             return
         out, _ = QFileDialog.getSaveFileName(self, "Save As", "", "PDF (*.pdf)")
         if not out:
             return
         try:
-            pdf_ops.save_copy(self.current_pdf, Path(out), self.page_panel.order())
+            order = self.page_panel.order()
+            # If reorder/delete happened, write reordered version. Else just copy.
+            if order != list(range(len(order))) or (
+                self.viewer.doc and len(order) != self.viewer.doc.page_count
+            ):
+                pdf_ops.save_copy(self.work_pdf, Path(out), order)
+            else:
+                shutil.copy2(self.work_pdf, out)
             QMessageBox.information(self, "Saved", out)
         except Exception as e:
             QMessageBox.critical(self, "Save failed", str(e))
 
     def _on_pages_changed(self):
-        # Reload viewer to reflect reorder/delete
-        if self.current_pdf:
-            self.viewer.load(self.current_pdf)
+        if self.work_pdf:
+            self.viewer.load(self.work_pdf)
+
+    # Edit ops (rect-drag)
+    def _on_edit_rect(self, page: int, x0: float, y0: float, x1: float, y1: float):
+        if not self.work_pdf:
+            return
+        rect = (x0, y0, x1, y1)
+        mode = self.viewer.mode
+        try:
+            if mode == Mode.REDACT:
+                pdf_edit.redact_rect(self.work_pdf, self.work_pdf, page, rect)
+            elif mode == Mode.TEXT:
+                text, ok = QInputDialog.getMultiLineText(self, "Insert text", "Text:")
+                if not ok or not text:
+                    return
+                size, ok2 = QInputDialog.getDouble(
+                    self, "Font size", "Size (pt):", 11.0, 4.0, 144.0, 1
+                )
+                if not ok2:
+                    return
+                pdf_edit.add_text_box(
+                    self.work_pdf, self.work_pdf, page, rect, text, fontsize=size
+                )
+            elif mode == Mode.IMAGE:
+                img, _ = QFileDialog.getOpenFileName(
+                    self, "Image", "", "Image (*.png *.jpg *.jpeg *.bmp)"
+                )
+                if not img:
+                    return
+                pdf_edit.replace_image(
+                    self.work_pdf, self.work_pdf, page, rect, Path(img)
+                )
+            elif mode == Mode.HIGHLIGHT:
+                pdf_edit.highlight_rect(self.work_pdf, self.work_pdf, page, rect)
+            else:
+                return
+            # Reload to reflect change
+            self.viewer.load(self.work_pdf)
+            self.page_panel.load(self.work_pdf)
+        except Exception as e:
+            QMessageBox.critical(self, "Edit failed", str(e))
 
     # Converters
     def _ask_output(self) -> Path | None:
@@ -102,7 +198,8 @@ class MainWindow(QMainWindow):
 
     def convert_images(self):
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Select images", "", "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)"
+            self, "Select images", "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)",
         )
         if not paths:
             return
@@ -133,7 +230,8 @@ class MainWindow(QMainWindow):
 
     def convert_html_md(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select HTML/Markdown", "", "HTML/MD (*.html *.htm *.md *.markdown)"
+            self, "Select HTML/Markdown", "",
+            "HTML/MD (*.html *.htm *.md *.markdown)",
         )
         if not path:
             return
@@ -163,7 +261,9 @@ class MainWindow(QMainWindow):
 
     # Page ops
     def merge_pdfs(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, "Select PDFs to merge", "", "PDF (*.pdf)")
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Select PDFs to merge", "", "PDF (*.pdf)"
+        )
         if not paths:
             return
         out = self._ask_output()
@@ -176,7 +276,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Merge failed", str(e))
 
     def split_pdf(self):
-        if not self.current_pdf:
+        if not self.work_pdf:
             QMessageBox.warning(self, "No PDF", "Open a PDF first.")
             return
         ranges, ok = QInputDialog.getText(
@@ -188,7 +288,7 @@ class MainWindow(QMainWindow):
         if not out_dir:
             return
         try:
-            files = pdf_ops.split(self.current_pdf, ranges, Path(out_dir))
+            files = pdf_ops.split(self.work_pdf, ranges, Path(out_dir))
             QMessageBox.information(self, "Done", "\n".join(str(f) for f in files))
         except Exception as e:
             QMessageBox.critical(self, "Split failed", str(e))
