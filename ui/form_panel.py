@@ -1,7 +1,7 @@
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QPushButton, QFileDialog,
-    QMessageBox, QScrollArea, QLabel, QHBoxLayout,
+    QMessageBox, QScrollArea, QLabel, QHBoxLayout, QInputDialog,
 )
 from pdf_app.core import forms, signing
 
@@ -28,13 +28,15 @@ class FormPanel(QWidget):
         save_btn.clicked.connect(self.save_filled)
         sign_btn = QPushButton("Add image signature...")
         sign_btn.clicked.connect(self.add_signature)
+        crypto_btn = QPushButton("Digital sign (.pfx)...")
+        crypto_btn.clicked.connect(self.digital_sign)
         btns.addWidget(save_btn)
         btns.addWidget(sign_btn)
+        btns.addWidget(crypto_btn)
         root.addLayout(btns)
 
     def load(self, path: Path):
         self.path = path
-        # Clear
         while self.form_layout.rowCount():
             self.form_layout.removeRow(0)
         self.fields.clear()
@@ -72,7 +74,39 @@ class FormPanel(QWidget):
         if not out:
             return
         try:
-            signing.stamp_image(self.path, Path(out), Path(img), page=-1, x=72, y=72, width=200)
+            signing.stamp_image(
+                self.path, Path(out), Path(img), page=-1, x=72, y=72, width=200
+            )
             QMessageBox.information(self, "Saved", out)
         except Exception as e:
             QMessageBox.critical(self, "Sign failed", str(e))
+
+    def digital_sign(self):
+        if not self.path:
+            QMessageBox.warning(self, "No PDF", "Open a PDF first.")
+            return
+        pfx, _ = QFileDialog.getOpenFileName(
+            self, "PKCS#12 cert", "", "PKCS#12 (*.pfx *.p12)"
+        )
+        if not pfx:
+            return
+        password, ok = QInputDialog.getText(
+            self, "Password", "Cert password:", QLineEdit.EchoMode.Password
+        )
+        if not ok:
+            return
+        reason, _ = QInputDialog.getText(self, "Reason", "Reason (optional):")
+        location, _ = QInputDialog.getText(self, "Location", "Location (optional):")
+        out, _ = QFileDialog.getSaveFileName(
+            self, "Save signed PDF", "", "PDF (*.pdf)"
+        )
+        if not out:
+            return
+        try:
+            signing.sign_pkcs7(
+                self.path, Path(out), Path(pfx), password,
+                reason=reason or None, location=location or None,
+            )
+            QMessageBox.information(self, "Signed", out)
+        except Exception as e:
+            QMessageBox.critical(self, "Digital sign failed", str(e))

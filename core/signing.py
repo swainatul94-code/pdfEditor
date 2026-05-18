@@ -1,7 +1,7 @@
 """Signature support.
 
-stamp_image: visible signature image only (not cryptographic).
-For real PKCS#7 signing, add pyhanko flow with a cert/key.
+- stamp_image: visible signature image overlay (not cryptographic).
+- sign_pkcs7: invisible PKCS#7 digital signature via pyhanko + PKCS#12 cert.
 """
 from pathlib import Path
 import fitz
@@ -20,7 +20,6 @@ def stamp_image(
     try:
         idx = page if page >= 0 else doc.page_count - 1
         pg = doc.load_page(idx)
-        # Maintain aspect by reading image size
         import PIL.Image
         with PIL.Image.open(image) as im:
             ratio = im.height / im.width
@@ -29,4 +28,48 @@ def stamp_image(
         doc.save(out)
     finally:
         doc.close()
+    return out
+
+
+def sign_pkcs7(
+    src: Path,
+    out: Path,
+    pfx_path: Path,
+    password: str,
+    reason: str | None = None,
+    location: str | None = None,
+    field_name: str = "Signature1",
+) -> Path:
+    """Apply invisible PKCS#7 digital signature using a PKCS#12 (.pfx/.p12) cert."""
+    from pyhanko.sign import signers
+    from pyhanko.sign.signers.pdf_signer import PdfSigner
+    from pyhanko.sign.fields import SigFieldSpec
+    from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
+    from pyhanko.sign import PdfSignatureMetadata
+
+    signer = signers.SimpleSigner.load_pkcs12(
+        pfx_file=str(pfx_path),
+        passphrase=password.encode("utf-8") if password else None,
+    )
+    if signer is None:
+        raise RuntimeError("Failed to load PKCS#12. Wrong password or invalid file.")
+
+    meta = PdfSignatureMetadata(
+        field_name=field_name,
+        reason=reason,
+        location=location,
+    )
+    with open(src, "rb") as inf, open(out, "wb") as outf:
+        w = IncrementalPdfFileWriter(inf)
+        # Ensure field exists (invisible)
+        try:
+            from pyhanko.sign import fields as sig_fields
+            sig_fields.append_signature_field(
+                w, sig_field_spec=SigFieldSpec(sig_field_name=field_name)
+            )
+        except Exception:
+            # Field may already exist; ignore
+            pass
+        pdf_signer = PdfSigner(meta, signer=signer)
+        pdf_signer.sign_pdf(w, output=outf)
     return out

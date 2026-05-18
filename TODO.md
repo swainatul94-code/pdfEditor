@@ -9,7 +9,7 @@ Stack: PyQt6 + PyMuPDF + pypdf + ReportLab + WeasyPrint + LibreOffice. Windows o
 - [x] Phase 3: converters — images, office (soffice), html/md (weasyprint), text/csv (reportlab)
 - [x] Phase 4: forms fill + image signature stamp
 - [x] Phase 5: edit overlays UI — rect-drag in viewer; modes: Pan, Redact, Text, Image, Highlight
-- [ ] Phase 6: cryptographic signing via pyhanko (cert + key config UI)
+- [x] Phase 6: cryptographic signing via pyhanko (.pfx + password UI; invisible PKCS#7)
 - [~] Phase 7: annotations — highlight done; freehand draw + sticky note pending
 - [x] Phase 8: PyInstaller build script (`build.ps1`); icon + signed exe pending
 - [ ] Phase 9: installer (Inno Setup) — check LibreOffice + GTK deps, prompt install
