@@ -82,6 +82,8 @@ class MainWindow(QMainWindow):
             ("Text", Mode.TEXT),
             ("Image", Mode.IMAGE),
             ("Highlight", Mode.HIGHLIGHT),
+            ("Draw", Mode.DRAW),
+            ("Note", Mode.NOTE),
         ]:
             act = QAction(label, self)
             act.setCheckable(True)
@@ -102,6 +104,8 @@ class MainWindow(QMainWindow):
         self.page_panel.page_selected.connect(self.viewer.show_page)
         self.page_panel.pages_changed.connect(self._on_pages_changed)
         self.viewer.edit_rect.connect(self._on_edit_rect)
+        self.viewer.edit_path.connect(self._on_edit_path)
+        self.viewer.edit_point.connect(self._on_edit_point)
         split.addWidget(self.page_panel)
         split.addWidget(self.viewer)
         split.setSizes([220, 1060])
@@ -190,6 +194,29 @@ class MainWindow(QMainWindow):
             self.page_panel.load(self.work_pdf)
         except Exception as e:
             QMessageBox.critical(self, "Edit failed", str(e))
+
+    def _on_edit_path(self, page: int, points: list):
+        if not self.work_pdf or self.viewer.mode != Mode.DRAW:
+            return
+        try:
+            pdf_edit.add_ink_annot(self.work_pdf, self.work_pdf, page, points)
+            self.viewer.load(self.work_pdf)
+            self.page_panel.load(self.work_pdf)
+        except Exception as e:
+            QMessageBox.critical(self, "Draw failed", str(e))
+
+    def _on_edit_point(self, page: int, x: float, y: float):
+        if not self.work_pdf or self.viewer.mode != Mode.NOTE:
+            return
+        text, ok = QInputDialog.getMultiLineText(self, "Sticky note", "Note text:")
+        if not ok or not text:
+            return
+        try:
+            pdf_edit.add_note_annot(self.work_pdf, self.work_pdf, page, x, y, text)
+            self.viewer.load(self.work_pdf)
+            self.page_panel.load(self.work_pdf)
+        except Exception as e:
+            QMessageBox.critical(self, "Note failed", str(e))
 
     # Converters
     def _ask_output(self) -> Path | None:

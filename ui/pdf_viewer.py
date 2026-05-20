@@ -3,8 +3,11 @@ from pathlib import Path
 import fitz
 from PyQt6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem,
+    QGraphicsPathItem,
 )
-from PyQt6.QtGui import QPixmap, QImage, QWheelEvent, QPen, QColor, QMouseEvent
+from PyQt6.QtGui import (
+    QPixmap, QImage, QWheelEvent, QPen, QColor, QMouseEvent, QPainterPath,
+)
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF
 
 
@@ -14,11 +17,20 @@ class Mode(str, Enum):
     TEXT = "text"
     IMAGE = "image"
     HIGHLIGHT = "highlight"
+    DRAW = "draw"
+    NOTE = "note"
+
+
+RECT_MODES = {Mode.REDACT, Mode.TEXT, Mode.IMAGE, Mode.HIGHLIGHT}
 
 
 class PdfViewer(QGraphicsView):
     # (page_index, x0, y0, x1, y1) in PDF points
     edit_rect = pyqtSignal(int, float, float, float, float)
+    # (page_index, [(x, y), ...]) in PDF points
+    edit_path = pyqtSignal(int, list)
+    # (page_index, x, y) in PDF points
+    edit_point = pyqtSignal(int, float, float)
 
     def __init__(self):
         super().__init__()
@@ -31,6 +43,8 @@ class PdfViewer(QGraphicsView):
         self.mode: Mode = Mode.PAN
         self._drag_start: QPointF | None = None
         self._rubber: QGraphicsRectItem | None = None
+        self._ink_points: list[QPointF] = []
+        self._ink_path_item: QGraphicsPathItem | None = None
 
     def set_mode(self, mode: Mode):
         self.mode = mode
@@ -68,9 +82,29 @@ class PdfViewer(QGraphicsView):
         else:
             super().wheelEvent(event)
 
-    # Rect-drag editing
+    # Edit interactions
     def mousePressEvent(self, event: QMouseEvent):
-        if self.mode != Mode.PAN and event.button() == Qt.MouseButton.LeftButton and self.doc:
+        if not self.doc or event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+        if self.mode == Mode.NOTE:
+            p = self.mapToScene(event.pos())
+            z = self.zoom
+            self.edit_point.emit(self.current_page, p.x() / z, p.y() / z)
+            event.accept()
+            return
+        if self.mode == Mode.DRAW:
+            p = self.mapToScene(event.pos())
+            self._ink_points = [p]
+            path = QPainterPath(p)
+            self._ink_path_item = QGraphicsPathItem(path)
+            pen = QPen(QColor(220, 30, 30))
+            pen.setWidth(2)
+            self._ink_path_item.setPen(pen)
+            self.scene_.addItem(self._ink_path_item)
+            event.accept()
+            return
+        if self.mode in RECT_MODES:
             self._drag_start = self.mapToScene(event.pos())
             self._rubber = QGraphicsRectItem()
             pen = QPen(QColor(220, 30, 30))
@@ -86,6 +120,15 @@ class PdfViewer(QGraphicsView):
         if self._rubber and self._drag_start is not None:
             cur = self.mapToScene(event.pos())
             self._rubber.setRect(QRectF(self._drag_start, cur).normalized())
+            event.accept()
+            return
+        if self._ink_path_item is not None:
+            p = self.mapToScene(event.pos())
+            self._ink_points.append(p)
+            path = QPainterPath(self._ink_points[0])
+            for pt in self._ink_points[1:]:
+                path.lineTo(pt)
+            self._ink_path_item.setPath(path)
             event.accept()
             return
         super().mouseMoveEvent(event)
@@ -107,6 +150,19 @@ class PdfViewer(QGraphicsView):
                 (rect.x() + rect.width()) / z,
                 (rect.y() + rect.height()) / z,
             )
+            event.accept()
+            return
+        if self._ink_path_item is not None:
+            pts = self._ink_points
+            self.scene_.removeItem(self._ink_path_item)
+            self._ink_path_item = None
+            self._ink_points = []
+            if len(pts) >= 2:
+                z = self.zoom
+                self.edit_path.emit(
+                    self.current_page,
+                    [(p.x() / z, p.y() / z) for p in pts],
+                )
             event.accept()
             return
         super().mouseReleaseEvent(event)

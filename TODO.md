@@ -10,9 +10,9 @@ Stack: PyQt6 + PyMuPDF + pypdf + ReportLab + WeasyPrint + LibreOffice. Windows o
 - [x] Phase 4: forms fill + image signature stamp
 - [x] Phase 5: edit overlays UI — rect-drag in viewer; modes: Pan, Redact, Text, Image, Highlight
 - [x] Phase 6: cryptographic signing via pyhanko (.pfx + password UI; invisible PKCS#7)
-- [~] Phase 7: annotations — highlight done; freehand draw + sticky note pending
-- [x] Phase 8: PyInstaller build script (`build.ps1`); icon + signed exe pending
-- [ ] Phase 9: installer (Inno Setup) — check LibreOffice + GTK deps, prompt install
+- [x] Phase 7: annotations — highlight + freehand draw + sticky note
+- [x] Phase 8: PyInstaller build script (`build.ps1`); optional icon.ico + optional signtool via env
+- [x] Phase 9: installer (`installer.iss`, Inno Setup) — detects LibreOffice + GTK, offers download URLs
 
 ## Open issues / decisions
 
@@ -31,23 +31,11 @@ git log --oneline   # see last phase
 
 Brief Claude: "Resume pdf_app. Read README.md + TODO.md. Continue from next unchecked phase."
 
-## Next concrete task
+## Next concrete tasks
 
-Phase 6: cryptographic signing.
-- Add `core/signing.py::sign_pkcs7(src, out, pfx_path, password, reason, location)`
-- Use `pyhanko.sign.signers.SimpleSigner.load_pkcs12()` + `pyhanko.sign.PdfSigner`
-- UI: add "Digital sign..." action in FormPanel — file picker for .pfx, password prompt
-- Optional: visible sig combining `stamp_image` + crypto sig (pyhanko signature field)
-
-Phase 7 remainder:
-- Freehand draw: capture mouse path in viewer (list of QPointF), emit on release, write via `page.add_ink_annot([points])`
-- Sticky note: click position -> `page.add_text_annot(point, text, icon="Note")`
-
-Phase 8 polish:
-- Add `icon.ico` to build.ps1 (`--icon icon.ico`)
-- Build, smoke-test `dist\pdf_app.exe`
-- Sign exe (`signtool`) if cert available
-
-Phase 9:
-- Write `installer.iss` (Inno Setup)
-- Pre-install check: LibreOffice present? GTK present? Offer download links
+Polish / not-yet-done:
+- Drop an actual `icon.ico` at project root — `build.ps1` and `installer.iss` both auto-pick it up.
+- Code-sign the exe: set `$env:PDFAPP_SIGN_PFX` + `$env:PDFAPP_SIGN_PWD` before running `build.ps1`.
+- Compile installer: `iscc installer.iss` → `dist\installer\pdf_app-setup-0.1.0.exe`.
+- Smoke-test `dist\pdf_app.exe` and the installer on a clean VM (verify the missing-deps dialog).
+- Optional: visible signature combining `signing.stamp_image` + pyhanko signature field.

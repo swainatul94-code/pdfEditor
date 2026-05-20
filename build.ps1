@@ -17,17 +17,49 @@ pip install pyinstaller
 if (Test-Path "build") { Remove-Item -Recurse -Force build }
 if (Test-Path "dist") { Remove-Item -Recurse -Force dist }
 
-pyinstaller `
-    --name pdf_app `
-    --windowed `
-    --onefile `
-    --hidden-import=fitz `
-    --hidden-import=weasyprint `
-    --hidden-import=reportlab `
-    --hidden-import=img2pdf `
-    --collect-all PyQt6 `
-    --collect-all weasyprint `
-    main.py
+$pyiArgs = @(
+    "--name", "pdf_app",
+    "--windowed",
+    "--onefile",
+    "--hidden-import=fitz",
+    "--hidden-import=weasyprint",
+    "--hidden-import=reportlab",
+    "--hidden-import=img2pdf",
+    "--hidden-import=pyhanko",
+    "--collect-all", "PyQt6",
+    "--collect-all", "weasyprint",
+    "--collect-all", "pyhanko",
+    "--collect-all", "pyhanko_certvalidator"
+)
+
+if (Test-Path "icon.ico") {
+    $pyiArgs += @("--icon", "icon.ico")
+    Write-Host "Using icon.ico" -ForegroundColor Cyan
+} else {
+    Write-Host "No icon.ico — default PyInstaller icon will be used." -ForegroundColor Yellow
+}
+
+$pyiArgs += "main.py"
+
+pyinstaller @pyiArgs
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "PyInstaller failed (exit $LASTEXITCODE)." -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
+# Optional code signing: set $env:PDFAPP_SIGN_PFX and $env:PDFAPP_SIGN_PWD
+if ($env:PDFAPP_SIGN_PFX -and (Test-Path $env:PDFAPP_SIGN_PFX)) {
+    $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
+    if ($signtool) {
+        Write-Host "Signing dist\pdf_app.exe..." -ForegroundColor Cyan
+        & $signtool sign /f $env:PDFAPP_SIGN_PFX /p $env:PDFAPP_SIGN_PWD `
+            /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+            "dist\pdf_app.exe"
+    } else {
+        Write-Host "signtool.exe not on PATH; skipping signing." -ForegroundColor Yellow
+    }
+}
 
 Write-Host ""
 Write-Host "Build complete: dist\pdf_app.exe" -ForegroundColor Green

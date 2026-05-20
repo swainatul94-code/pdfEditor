@@ -26,7 +26,10 @@ python -m pdf_app.main
 - Page ops: merge, split, reorder, delete (phase 2)
 - Convert to PDF: images, Office (docx/xlsx/pptx), HTML/MD, text/CSV (phase 3)
 - Forms fill + image signature (phase 4)
-- Edit overlays: redact, text box, image replace (phase 5)
+- Edit overlays: redact, text box, image replace, highlight (phase 5)
+- Annotations: freehand ink + sticky notes (phase 7)
+- Crypto signing via .pfx (phase 6)
+- PyInstaller exe + Inno Setup installer (phases 8-9)
 
 ## Layout
 

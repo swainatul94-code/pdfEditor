@@ -83,6 +83,49 @@ def replace_image(
     return out
 
 
+def add_ink_annot(
+    src: Path,
+    out: Path,
+    page_index: int,
+    points: list[tuple[float, float]],
+    color: tuple[float, float, float] = (0.85, 0.12, 0.12),
+    width: float = 1.5,
+) -> Path:
+    doc = fitz.open(str(src))
+    try:
+        page = doc.load_page(page_index)
+        annot = page.add_ink_annot([points])
+        annot.set_colors(stroke=color)
+        annot.set_border(width=width)
+        annot.update()
+        _save(doc, src, out)
+    except Exception:
+        doc.close()
+        raise
+    return out
+
+
+def add_note_annot(
+    src: Path,
+    out: Path,
+    page_index: int,
+    x: float,
+    y: float,
+    text: str,
+    icon: str = "Note",
+) -> Path:
+    doc = fitz.open(str(src))
+    try:
+        page = doc.load_page(page_index)
+        annot = page.add_text_annot(fitz.Point(x, y), text, icon=icon)
+        annot.update()
+        _save(doc, src, out)
+    except Exception:
+        doc.close()
+        raise
+    return out
+
+
 def highlight_rect(
     src: Path,
     out: Path,
