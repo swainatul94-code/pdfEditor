@@ -2,16 +2,22 @@
 # Run from pdf_app dir with venv active:
 #   .\build.ps1
 
-$ErrorActionPreference = "Stop"
+# Note: do not use $ErrorActionPreference="Stop". PyInstaller writes INFO
+# lines to stderr; with Stop the first such line aborts the script. We check
+# $LASTEXITCODE explicitly after the pyinstaller call instead.
+$ErrorActionPreference = "Continue"
 
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
     Write-Host "No .venv found. Create with: python -m venv .venv" -ForegroundColor Red
     exit 1
 }
 
-& .\.venv\Scripts\Activate.ps1
+# Use venv python/pyinstaller directly (avoids Activate.ps1 side effects in
+# nested PowerShell hosts) and ensure pyinstaller is installed.
+$venvPy = ".\.venv\Scripts\python.exe"
+$venvPyi = ".\.venv\Scripts\pyinstaller.exe"
 
-pip install pyinstaller
+& $venvPy -m pip install --disable-pip-version-check pyinstaller | Out-Null
 
 # Clean old build
 if (Test-Path "build") { Remove-Item -Recurse -Force build }
@@ -36,12 +42,12 @@ if (Test-Path "icon.ico") {
     $pyiArgs += @("--icon", "icon.ico")
     Write-Host "Using icon.ico" -ForegroundColor Cyan
 } else {
-    Write-Host "No icon.ico — default PyInstaller icon will be used." -ForegroundColor Yellow
+    Write-Host "No icon.ico - default PyInstaller icon will be used." -ForegroundColor Yellow
 }
 
 $pyiArgs += "main.py"
 
-pyinstaller @pyiArgs
+& $venvPyi @pyiArgs
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "PyInstaller failed (exit $LASTEXITCODE)." -ForegroundColor Red
