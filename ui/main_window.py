@@ -13,9 +13,10 @@ from pdf_app.ui.pdf_viewer import PdfViewer, Mode
 from pdf_app.ui.page_panel import PagePanel
 from pdf_app.ui.form_panel import FormPanel
 from pdf_app.core import pdf_ops, pdf_edit
-from pdf_app.converters import (
-    images_to_pdf, office_to_pdf, html_md_to_pdf, text_csv_to_pdf,
-)
+# Converters are imported lazily inside each handler. WeasyPrint loads the
+# GTK runtime at import time and would crash app startup on machines without
+# GTK installed; deferring lets the rest of the app run and surface a
+# friendly install hint only when the user actually clicks Convert.
 
 
 class MainWindow(QMainWindow):
@@ -240,6 +241,7 @@ class MainWindow(QMainWindow):
         if not out:
             return
         try:
+            from pdf_app.converters import images_to_pdf
             images_to_pdf.convert([Path(p) for p in paths], out)
             QMessageBox.information(self, "Done", str(out))
         except Exception as e:
@@ -256,6 +258,7 @@ class MainWindow(QMainWindow):
         if not out:
             return
         try:
+            from pdf_app.converters import office_to_pdf
             office_to_pdf.convert(Path(path), out)
             QMessageBox.information(self, "Done", str(out))
         except FileNotFoundError as e:
@@ -281,6 +284,7 @@ class MainWindow(QMainWindow):
         if not out:
             return
         try:
+            from pdf_app.converters import html_md_to_pdf
             html_md_to_pdf.convert(Path(path), out)
             QMessageBox.information(self, "Done", str(out))
         except OSError as e:
@@ -307,6 +311,7 @@ class MainWindow(QMainWindow):
         if not out:
             return
         try:
+            from pdf_app.converters import text_csv_to_pdf
             text_csv_to_pdf.convert(Path(path), out)
             QMessageBox.information(self, "Done", str(out))
         except Exception as e:
