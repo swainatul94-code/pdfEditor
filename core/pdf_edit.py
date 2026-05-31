@@ -69,6 +69,40 @@ def add_text_box(
     return out
 
 
+def replace_text_box(
+    src: Path,
+    out: Path,
+    page_index: int,
+    rect: tuple[float, float, float, float],
+    text: str,
+    fontsize: float = 11,
+    fontname: str = "helv",
+    color: tuple[float, float, float] = (0, 0, 0),
+    fill: tuple[float, float, float] = (1, 1, 1),
+) -> Path:
+    """Cover existing content in rect with `fill`, then overlay `text`.
+
+    Overlay-based 'edit' of existing text: drag a rect over the old
+    text, supply replacement. True text reflow (Acrobat-style) needs a
+    layout engine and is out of scope.
+    """
+    doc = fitz.open(str(src))
+    try:
+        page = doc.load_page(page_index)
+        page.add_redact_annot(fitz.Rect(*rect), fill=fill)
+        page.apply_redactions()
+        page.insert_textbox(
+            fitz.Rect(*rect), text,
+            fontsize=fontsize, fontname=fontname, color=color,
+        )
+        _save(doc, src, out)
+    except Exception:
+        if not getattr(doc, "is_closed", True):
+            doc.close()
+        raise
+    return out
+
+
 def replace_image(
     src: Path,
     out: Path,

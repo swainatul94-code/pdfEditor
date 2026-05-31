@@ -15,13 +15,14 @@ class Mode(str, Enum):
     PAN = "pan"
     REDACT = "redact"
     TEXT = "text"
+    REPLACE_TEXT = "replace_text"
     IMAGE = "image"
     HIGHLIGHT = "highlight"
     DRAW = "draw"
     NOTE = "note"
 
 
-RECT_MODES = {Mode.REDACT, Mode.TEXT, Mode.IMAGE, Mode.HIGHLIGHT}
+RECT_MODES = {Mode.REDACT, Mode.TEXT, Mode.REPLACE_TEXT, Mode.IMAGE, Mode.HIGHLIGHT}
 
 
 class PdfViewer(QGraphicsView):

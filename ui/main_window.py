@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
             ("Pan", Mode.PAN),
             ("Redact", Mode.REDACT),
             ("Text", Mode.TEXT),
+            ("Replace text", Mode.REPLACE_TEXT),
             ("Image", Mode.IMAGE),
             ("Highlight", Mode.HIGHLIGHT),
             ("Draw", Mode.DRAW),
@@ -183,6 +184,20 @@ class MainWindow(QMainWindow):
                 if not ok2:
                     return
                 pdf_edit.add_text_box(
+                    self.work_pdf, self.work_pdf, page, rect, text, fontsize=size
+                )
+            elif mode == Mode.REPLACE_TEXT:
+                text, ok = QInputDialog.getMultiLineText(
+                    self, "Replace text", "Replacement:"
+                )
+                if not ok or not text:
+                    return
+                size, ok2 = QInputDialog.getDouble(
+                    self, "Font size", "Size (pt):", 11.0, 4.0, 144.0, 1
+                )
+                if not ok2:
+                    return
+                pdf_edit.replace_text_box(
                     self.work_pdf, self.work_pdf, page, rect, text, fontsize=size
                 )
             elif mode == Mode.IMAGE:
