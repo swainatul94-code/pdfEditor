@@ -139,21 +139,29 @@ class MainWindow(QMainWindow):
         if not out:
             return
         try:
-            order = self.page_panel.order()
-            # If reorder/delete happened, write reordered version. Else just copy.
-            if order != list(range(len(order))) or (
-                self.viewer.doc and len(order) != self.viewer.doc.page_count
-            ):
-                pdf_ops.save_copy(self.work_pdf, Path(out), order)
-            else:
-                shutil.copy2(self.work_pdf, out)
+            shutil.copy2(self.work_pdf, out)
             QMessageBox.information(self, "Saved", out)
         except Exception as e:
             QMessageBox.critical(self, "Save failed", str(e))
 
     def _on_pages_changed(self):
-        if self.work_pdf:
+        if not self.work_pdf:
+            return
+        # Apply current panel order/deletions to work_pdf so the viewer (and
+        # later edit ops, which address pages by their viewer index) see the
+        # same page set the panel shows.
+        order = self.page_panel.order()
+        try:
+            if order:
+                pdf_ops.save_copy(self.work_pdf, self.work_pdf, order)
             self.viewer.load(self.work_pdf)
+            # Reload panel so its UserRole indices are 0..N-1 again, matching
+            # the just-written file.
+            self.page_panel.blockSignals(True)
+            self.page_panel.load(self.work_pdf)
+            self.page_panel.blockSignals(False)
+        except Exception as e:
+            QMessageBox.critical(self, "Page change failed", str(e))
 
     # Edit ops (rect-drag)
     def _on_edit_rect(self, page: int, x0: float, y0: float, x1: float, y1: float):
@@ -189,9 +197,9 @@ class MainWindow(QMainWindow):
                 pdf_edit.highlight_rect(self.work_pdf, self.work_pdf, page, rect)
             else:
                 return
-            # Reload to reflect change
+            # Reload viewer only; reloading page_panel would wipe the user's
+            # current reorder/delete state.
             self.viewer.load(self.work_pdf)
-            self.page_panel.load(self.work_pdf)
         except Exception as e:
             QMessageBox.critical(self, "Edit failed", str(e))
 
@@ -201,7 +209,6 @@ class MainWindow(QMainWindow):
         try:
             pdf_edit.add_ink_annot(self.work_pdf, self.work_pdf, page, points)
             self.viewer.load(self.work_pdf)
-            self.page_panel.load(self.work_pdf)
         except Exception as e:
             QMessageBox.critical(self, "Draw failed", str(e))
 
@@ -214,7 +221,6 @@ class MainWindow(QMainWindow):
         try:
             pdf_edit.add_note_annot(self.work_pdf, self.work_pdf, page, x, y, text)
             self.viewer.load(self.work_pdf)
-            self.page_panel.load(self.work_pdf)
         except Exception as e:
             QMessageBox.critical(self, "Note failed", str(e))
 
@@ -252,6 +258,15 @@ class MainWindow(QMainWindow):
         try:
             office_to_pdf.convert(Path(path), out)
             QMessageBox.information(self, "Done", str(out))
+        except FileNotFoundError as e:
+            QMessageBox.critical(
+                self, "LibreOffice not found",
+                "Office -> PDF conversion needs LibreOffice.\n\n"
+                "Install: https://www.libreoffice.org/download/download/\n\n"
+                "Or set the SOFFICE_PATH environment variable to point at\n"
+                "your soffice.exe.\n\n"
+                f"Detail: {e}",
+            )
         except Exception as e:
             QMessageBox.critical(self, "Convert failed", str(e))
 
@@ -268,6 +283,17 @@ class MainWindow(QMainWindow):
         try:
             html_md_to_pdf.convert(Path(path), out)
             QMessageBox.information(self, "Done", str(out))
+        except OSError as e:
+            # WeasyPrint raises OSError on Windows when GTK / Pango cannot
+            # be located (cffi load failure).
+            QMessageBox.critical(
+                self, "GTK runtime missing",
+                "HTML/Markdown -> PDF conversion needs the GTK 3 runtime.\n\n"
+                "Install: https://github.com/tschoonj/GTK-for-Windows-Runtime"
+                "-Environment-Installer/releases\n\n"
+                "Then restart this app.\n\n"
+                f"Detail: {e}",
+            )
         except Exception as e:
             QMessageBox.critical(self, "Convert failed", str(e))
 

@@ -74,10 +74,17 @@ class PdfViewer(QGraphicsView):
         self.scene_.addItem(QGraphicsPixmapItem(QPixmap.fromImage(img.copy())))
         self.setSceneRect(0, 0, pix.width, pix.height)
 
+    ZOOM_MIN = 0.25
+    ZOOM_MAX = 8.0
+
     def wheelEvent(self, event: QWheelEvent):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-            self.zoom *= factor
+            new_zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self.zoom * factor))
+            if new_zoom == self.zoom:
+                event.accept()
+                return
+            self.zoom = new_zoom
             self.show_page(self.current_page)
         else:
             super().wheelEvent(event)

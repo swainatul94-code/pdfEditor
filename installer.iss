@@ -9,7 +9,7 @@
 #define MyAppURL         "https://example.invalid/pdf_app"
 
 [Setup]
-AppId={{8E5B7A18-3E62-4B4D-9E1E-PDFAPP00001}}
+AppId={{51947B8B-962E-454E-9083-00C90B38ADB3}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
