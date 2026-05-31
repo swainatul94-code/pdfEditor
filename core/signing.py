@@ -3,6 +3,7 @@
 - stamp_image: visible signature image overlay (not cryptographic).
 - sign_pkcs7: invisible PKCS#7 digital signature via pyhanko + PKCS#12 cert.
 """
+import os
 from pathlib import Path
 import fitz
 
@@ -16,7 +17,8 @@ def stamp_image(
     y: float = 72,
     width: float = 200,
 ) -> Path:
-    doc = fitz.open(src)
+    src, out = Path(src), Path(out)
+    doc = fitz.open(str(src))
     try:
         idx = page if page >= 0 else doc.page_count - 1
         pg = doc.load_page(idx)
@@ -25,9 +27,17 @@ def stamp_image(
             ratio = im.height / im.width
         rect = fitz.Rect(x, y, x + width, y + width * ratio)
         pg.insert_image(rect, filename=str(image))
-        doc.save(out)
-    finally:
+        if src.resolve() == out.resolve():
+            tmp = out.with_suffix(out.suffix + ".tmp")
+            doc.save(str(tmp))
+            doc.close()
+            os.replace(tmp, out)
+        else:
+            doc.save(str(out))
+            doc.close()
+    except Exception:
         doc.close()
+        raise
     return out
 
 

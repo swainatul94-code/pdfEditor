@@ -6,7 +6,7 @@
 #define MyAppVersion     "0.1.0"
 #define MyAppPublisher   "pdf_app"
 #define MyAppExeName     "pdf_app.exe"
-#define MyAppURL         "https://example.invalid/pdf_app"
+#define MyAppURL         "https://github.com/swainatul94-code/pdfEditor"
 
 [Setup]
 AppId={{51947B8B-962E-454E-9083-00C90B38ADB3}}
