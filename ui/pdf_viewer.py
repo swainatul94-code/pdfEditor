@@ -58,7 +58,12 @@ class PdfViewer(QGraphicsView):
     def load(self, path: Path):
         if self.doc:
             self.doc.close()
-        self.doc = fitz.open(path)
+        # Read into memory and open from bytes so we don't hold a Windows
+        # file handle on work_pdf. pdf_edit needs to atomically replace
+        # that file; an open handle without FILE_SHARE_DELETE (PyMuPDF's
+        # default on Windows) makes os.replace fail with WinError 5.
+        data = Path(path).read_bytes()
+        self.doc = fitz.open(stream=data, filetype="pdf")
         page = min(self.current_page, self.doc.page_count - 1)
         self.show_page(max(0, page))
 

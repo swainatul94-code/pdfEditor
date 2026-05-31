@@ -26,7 +26,10 @@ class PagePanel(QListWidget):
     def load(self, path: Path):
         self.path = path
         self.clear()
-        doc = fitz.open(path)
+        # Stream-mode open so we don't keep an OS file handle on work_pdf
+        # while editors atomically replace it. See pdf_viewer.load.
+        data = Path(path).read_bytes()
+        doc = fitz.open(stream=data, filetype="pdf")
         try:
             for i in range(doc.page_count):
                 page = doc.load_page(i)

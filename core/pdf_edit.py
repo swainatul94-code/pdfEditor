@@ -35,7 +35,10 @@ def redact_rect(
         page.apply_redactions()
         _save(doc, src, out)
     except Exception:
-        doc.close()
+        # _save may have already closed doc; calling close() again would
+        # raise ValueError("document closed") and mask the real exception.
+        if not getattr(doc, "is_closed", True):
+            doc.close()
         raise
     return out
 
@@ -58,7 +61,10 @@ def add_text_box(
         )
         _save(doc, src, out)
     except Exception:
-        doc.close()
+        # _save may have already closed doc; calling close() again would
+        # raise ValueError("document closed") and mask the real exception.
+        if not getattr(doc, "is_closed", True):
+            doc.close()
         raise
     return out
 
@@ -78,7 +84,10 @@ def replace_image(
         page.insert_image(fitz.Rect(*rect), filename=str(image_path))
         _save(doc, src, out)
     except Exception:
-        doc.close()
+        # _save may have already closed doc; calling close() again would
+        # raise ValueError("document closed") and mask the real exception.
+        if not getattr(doc, "is_closed", True):
+            doc.close()
         raise
     return out
 
@@ -100,7 +109,10 @@ def add_ink_annot(
         annot.update()
         _save(doc, src, out)
     except Exception:
-        doc.close()
+        # _save may have already closed doc; calling close() again would
+        # raise ValueError("document closed") and mask the real exception.
+        if not getattr(doc, "is_closed", True):
+            doc.close()
         raise
     return out
 
@@ -121,7 +133,10 @@ def add_note_annot(
         annot.update()
         _save(doc, src, out)
     except Exception:
-        doc.close()
+        # _save may have already closed doc; calling close() again would
+        # raise ValueError("document closed") and mask the real exception.
+        if not getattr(doc, "is_closed", True):
+            doc.close()
         raise
     return out
 
@@ -144,6 +159,9 @@ def highlight_rect(
         annot.update()
         _save(doc, src, out)
     except Exception:
-        doc.close()
+        # _save may have already closed doc; calling close() again would
+        # raise ValueError("document closed") and mask the real exception.
+        if not getattr(doc, "is_closed", True):
+            doc.close()
         raise
     return out

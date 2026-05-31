@@ -36,7 +36,8 @@ def stamp_image(
             doc.save(str(out))
             doc.close()
     except Exception:
-        doc.close()
+        if not getattr(doc, "is_closed", True):
+            doc.close()
         raise
     return out
 
